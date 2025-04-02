@@ -156,7 +156,7 @@ public class WorkProfileManager extends UserProfileManager
                     R.layout.work_mode_fab, mAllApps, false);
         }
         if (mWorkModeSwitch.getParent() == null) {
-            mAllApps.addView(mWorkModeSwitch);
+//            mAllApps.addView(mWorkModeSwitch);
         }
         if (mAllApps.getCurrentPage() != WORK) {
             mWorkModeSwitch.animateVisibility(false);

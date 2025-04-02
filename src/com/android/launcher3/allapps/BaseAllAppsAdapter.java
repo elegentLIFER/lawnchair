@@ -78,6 +78,7 @@ public abstract class BaseAllAppsAdapter<T extends Context & ActivityContext> ex
     public static final int VIEW_TYPE_WORK_EDU_CARD = 1 << 8;
 
     public static final int VIEW_TYPE_FOLDER = 1 << 9;
+    public static final int VIEW_TYPE_MORE = 1 << 10;
 
     public static final int NEXT_ID = 10;
 
@@ -276,6 +277,18 @@ public abstract class BaseAllAppsAdapter<T extends Context & ActivityContext> ex
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT);
                 return new ViewHolder(fl);
+            case VIEW_TYPE_MORE:
+                int layoutMore = !FeatureFlags.twoLineAllApps(parent.getContext()) ? R.layout.all_apps_icon
+                    : R.layout.all_apps_icon_twoline;
+                BubbleTextView iconMore = (BubbleTextView) mLayoutInflater.inflate(
+                    layoutMore, parent, false);
+                iconMore.setLongPressTimeoutFactor(1f);
+                iconMore.setOnFocusChangeListener(mIconFocusListener);
+                iconMore.setOnClickListener(mOnIconClickListener);
+                iconMore.setOnLongClickListener(mOnIconLongClickListener);
+                // Ensure the all apps icon height matches the workspace icons in portrait mode.
+                iconMore.getLayoutParams().height = mActivityContext.getDeviceProfile().allAppsCellHeightPx;
+                return new ViewHolder(iconMore);
             default:
                 if (mAdapterProvider.isViewSupported(viewType)) {
                     return mAdapterProvider.onCreateViewHolder(mLayoutInflater, parent, viewType);
@@ -359,6 +372,37 @@ public abstract class BaseAllAppsAdapter<T extends Context & ActivityContext> ex
                 container.addView(FolderIcon.inflateFolderAndIcon(R.layout.all_apps_folder_icon, mActivityContext,
                     container, folderInfo));
                 break;
+            case VIEW_TYPE_MORE: {
+                AdapterItem adapterItemMore = mApps.getAdapterItems().get(position);
+                BubbleTextView icon = (BubbleTextView) holder.itemView;
+                icon.reset();
+                icon.applyFromApplicationInfo(adapterItemMore.itemInfo);
+                icon.setOnFocusChangeListener(mIconFocusListener);
+                PrivateProfileManager privateProfileManager = mApps.getPrivateProfileManager();
+                if (privateProfileManager != null) {
+                    // Set the alpha of the private space icon to 0 upon expanding the header so the
+                    // alpha can animate -> 1. This should only be in effect when doing a
+                    // transitioning between Locked/Unlocked state.
+                    boolean isPrivateSpaceItem = privateProfileManager.isPrivateSpaceItem(adapterItemMore);
+                    if (icon.getAlpha() == 0 || icon.getAlpha() == 1) {
+                        icon.setAlpha(isPrivateSpaceItem
+                            && privateProfileManager.isStateTransitioning()
+                            && (privateProfileManager.isScrolling() ||
+                            privateProfileManager.getReadyToAnimate())
+                            && privateProfileManager.getCurrentState() == STATE_ENABLED
+                            ? 0
+                            : 1);
+                    }
+                    // Views can still be bounded before the app list is updated hence showing icons
+                    // after collapsing.
+                    if (privateProfileManager.getCurrentState() == STATE_DISABLED
+                        && isPrivateSpaceItem) {
+                        adapterItemMore.decorationInfo = null;
+                        icon.setVisibility(GONE);
+                    }
+                }
+                break;
+            }
             default:
                 if (mAdapterProvider.isViewSupported(holder.getItemViewType())) {
                     mAdapterProvider.onBindView(holder, position);

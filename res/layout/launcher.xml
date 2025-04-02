@@ -76,7 +76,8 @@
             android:id="@+id/apps_view"
             layout="@layout/all_apps"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_gravity="bottom"
+            android:layout_height="510dp" />
 
     </com.android.launcher3.dragndrop.DragLayer>
 

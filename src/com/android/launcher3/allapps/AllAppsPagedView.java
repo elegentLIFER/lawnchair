@@ -23,13 +23,12 @@ import android.util.AttributeSet;
 
 import com.android.launcher3.PagedView;
 import com.android.launcher3.views.ActivityContext;
-import com.android.launcher3.workprofile.PersonalWorkPagedView;
 
 /**
  * A {@link PagedView} for showing different views for the personal and work profile respectively
  * in the {@link BaseAllAppsContainerView}.
  */
-public class AllAppsPagedView extends PersonalWorkPagedView {
+public class AllAppsPagedView extends AllAppsRealPagedView {
 
     public AllAppsPagedView(Context context) {
         this(context, null);

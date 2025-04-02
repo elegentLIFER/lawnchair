@@ -16,8 +16,13 @@
 package com.android.launcher3.allapps;
 
 import static com.android.launcher3.Flags.enableExpandingPauseWorkButton;
+import static com.android.launcher3.allapps.ActivityAllAppsContainerView.AdapterHolder.ENTERTAINMENT;
 import static com.android.launcher3.allapps.ActivityAllAppsContainerView.AdapterHolder.MAIN;
 import static com.android.launcher3.allapps.ActivityAllAppsContainerView.AdapterHolder.SEARCH;
+import static com.android.launcher3.allapps.ActivityAllAppsContainerView.AdapterHolder.SOCIAL;
+import static com.android.launcher3.allapps.ActivityAllAppsContainerView.AdapterHolder.SUGGESTIONS;
+import static com.android.launcher3.allapps.ActivityAllAppsContainerView.AdapterHolder.TRAVEL;
+import static com.android.launcher3.allapps.ActivityAllAppsContainerView.AdapterHolder.WORK;
 import static com.android.launcher3.allapps.BaseAllAppsAdapter.VIEW_TYPE_PRIVATE_SPACE_HEADER;
 import static com.android.launcher3.allapps.BaseAllAppsAdapter.VIEW_TYPE_WORK_DISABLED_CARD;
 import static com.android.launcher3.allapps.BaseAllAppsAdapter.VIEW_TYPE_WORK_EDU_CARD;
@@ -28,7 +33,6 @@ import static com.android.launcher3.logging.StatsLogManager.LauncherEvent.LAUNCH
 import static com.android.launcher3.logging.StatsLogManager.LauncherEvent.LAUNCHER_ALLAPPS_TAP_ON_WORK_TAB;
 import static com.android.launcher3.util.Executors.MAIN_EXECUTOR;
 import static com.android.launcher3.util.ScrollableLayoutManager.PREDICTIVE_BACK_MIN_SCALE;
-import static com.topjohnwu.superuser.internal.Utils.context;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
@@ -48,6 +52,7 @@ import android.os.Parcelable;
 import android.os.Process;
 import android.os.UserManager;
 import android.util.AttributeSet;
+import android.util.DisplayMetrics;
 import android.util.FloatProperty;
 import android.util.Log;
 import android.util.SparseArray;
@@ -74,6 +79,8 @@ import com.android.launcher3.DragSource;
 import com.android.launcher3.DropTarget.DragObject;
 import com.android.launcher3.Insettable;
 import com.android.launcher3.InsettableFrameLayout;
+import com.android.launcher3.Launcher;
+import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.allapps.BaseAllAppsAdapter.AdapterItem;
@@ -94,7 +101,6 @@ import com.android.launcher3.views.ActivityContext;
 import com.android.launcher3.views.BaseDragLayer;
 import com.android.launcher3.views.RecyclerViewFastScroller;
 import com.android.launcher3.views.ScrimView;
-import com.android.launcher3.workprofile.PersonalWorkSlidingTabStrip;
 import com.patrykmichalik.opto.core.PreferenceExtensionsKt;
 
 import java.util.ArrayList;
@@ -104,7 +110,12 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
+import app.lawnchair.allapps.EntertainAlphabeticalAppsList;
 import app.lawnchair.allapps.LawnchairAlphabeticalAppsList;
+import app.lawnchair.allapps.PersonalAlphabeticalAppsList;
+import app.lawnchair.allapps.SocialAlphabeticalAppsList;
+import app.lawnchair.allapps.SuggestionsAlphabeticalAppsList;
+import app.lawnchair.allapps.TravelAlphabeticalAppsList;
 import app.lawnchair.font.FontManager;
 import app.lawnchair.preferences.PreferenceManager;
 import app.lawnchair.preferences2.PreferenceManager2;
@@ -118,7 +129,7 @@ import app.lawnchair.ui.StretchRecyclerViewContainer;
  */
 public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         extends StretchRecyclerViewContainer implements DragSource, Insettable,
-        OnDeviceProfileChangeListener, PersonalWorkSlidingTabStrip.OnActivePageChangedListener,
+        OnDeviceProfileChangeListener, AllAppsSlidingTabStrip.OnActivePageChangedListener,
         ScrimView.ScrimDrawingController {
 
     public static final FloatProperty<ActivityAllAppsContainerView<?>> BOTTOM_SHEET_ALPHA = new FloatProperty<>(
@@ -212,6 +223,9 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     @Nullable
     private AllAppsTransitionController mAllAppsTransitionController;
 
+    private ShoppingAppsGrid mShoppingAppsGrid;
+    private boolean isShoppingMode = false;
+
     public ActivityAllAppsContainerView(Context context) {
         this(context, null);
     }
@@ -243,7 +257,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
                 UserCache.INSTANCE.get(mActivityContext));
         mPrivateSpaceBottomExtraSpace = context.getResources().getDimensionPixelSize(
                 R.dimen.ps_extra_bottom_padding);
-        mAH = Arrays.asList(null, null, null);
+        mAH = Arrays.asList(null, null, null, null, null, null, null);
         mNavBarScrimPaint = new Paint();
         mNavBarScrimPaint.setColor(Themes.getNavBarScrimColor(mActivityContext));
 
@@ -288,10 +302,18 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
 
         mMainAdapterProvider = mSearchUiDelegate.createMainAdapterProvider();
 
-        mAH.set(AdapterHolder.MAIN, new AdapterHolder(AdapterHolder.MAIN,
-                new LawnchairAlphabeticalAppsList<>(mActivityContext, mAllAppsStore, null, mPrivateProfileManager)));
-        mAH.set(AdapterHolder.WORK, new AdapterHolder(AdapterHolder.WORK,
+        mAH.set(SUGGESTIONS, new AdapterHolder(SUGGESTIONS,
+            new SuggestionsAlphabeticalAppsList<>(mActivityContext, mAllAppsStore, null, mPrivateProfileManager)));
+        mAH.set(MAIN, new AdapterHolder(MAIN,
+                new PersonalAlphabeticalAppsList<>(mActivityContext, mAllAppsStore, null, mPrivateProfileManager)));
+        mAH.set(WORK, new AdapterHolder(WORK,
                 new LawnchairAlphabeticalAppsList<>(mActivityContext, mAllAppsStore, mWorkManager, null)));
+        mAH.set(ENTERTAINMENT, new AdapterHolder(ENTERTAINMENT,
+            new EntertainAlphabeticalAppsList<>(mActivityContext, mAllAppsStore, null, mPrivateProfileManager)));
+        mAH.set(SOCIAL, new AdapterHolder(SOCIAL,
+            new SocialAlphabeticalAppsList<>(mActivityContext, mAllAppsStore, null, mPrivateProfileManager)));
+        mAH.set(TRAVEL, new AdapterHolder(TRAVEL,
+            new TravelAlphabeticalAppsList<>(mActivityContext, mAllAppsStore, null, mPrivateProfileManager)));
         mAH.set(SEARCH, new AdapterHolder(SEARCH,
                 new LawnchairAlphabeticalAppsList<>(mActivityContext, mAllAppsStore, null, null)));
 
@@ -309,6 +331,19 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
             // enabled,
             // it's added to drag layer in onAttach instead).
             addView(mSearchContainer);
+
+            LayoutParams layoutParams = (LayoutParams) mSearchContainer.getLayoutParams();
+            layoutParams.addRule(ALIGN_PARENT_BOTTOM);
+
+            DisplayMetrics metrics = new DisplayMetrics();
+            Launcher launcher = LauncherAppState.getInstance(getContext()).getLauncher();
+            launcher.getWindowManager().getDefaultDisplay().getMetrics(metrics);
+            // 获取屏幕DPI
+            int densityDpi = metrics.densityDpi;
+            int buttonsNavHeight = Utilities.dpToPx(58f, densityDpi);
+            
+            int bottomMargin = buttonsNavHeight;
+            layoutParams.bottomMargin = bottomMargin;
         }
         mSearchUiManager = (SearchUiManager) mSearchContainer;
     }
@@ -334,6 +369,12 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         mBottomSheetBackgroundColor = ColorTokens.SurfaceDimColor.resolveColor(getContext());
         updateBackgroundVisibility(mActivityContext.getDeviceProfile());
         mSearchUiManager.initializeSearch(this);
+
+        // 初始化购物视图
+        mShoppingAppsGrid = findViewById(R.id.shopping_apps_grid);
+        if (mShoppingAppsGrid != null) {
+            mShoppingAppsGrid.setVisibility(View.GONE);
+        }
     }
 
     @Override
@@ -547,7 +588,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
             // `animateToSearchState` with delay is a just no-op and return early.
             mSearchUiManager.resetSearch();
             // Switch to the main tab
-            switchToTab(ActivityAllAppsContainerView.AdapterHolder.MAIN);
+            switchToTab(MAIN);
             // Scroll to bottom
             if (mPrivateProfileManager != null) {
                 mPrivateProfileManager.scrollForHeaderToBeVisibleInContainer(
@@ -628,38 +669,82 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         replaceAppsRVContainer(showTabs);
         mUsingTabs = showTabs;
 
-        mAllAppsStore.unregisterIconContainer(mAH.get(AdapterHolder.MAIN).mRecyclerView);
-        mAllAppsStore.unregisterIconContainer(mAH.get(AdapterHolder.WORK).mRecyclerView);
-        mAllAppsStore.unregisterIconContainer(mAH.get(AdapterHolder.SEARCH).mRecyclerView);
+        mAllAppsStore.unregisterIconContainer(mAH.get(MAIN).mRecyclerView);
+        mAllAppsStore.unregisterIconContainer(mAH.get(WORK).mRecyclerView);
+        mAllAppsStore.unregisterIconContainer(mAH.get(SEARCH).mRecyclerView);
 
         final AllAppsRecyclerView mainRecyclerView;
         final AllAppsRecyclerView workRecyclerView;
+        final AllAppsRecyclerView suggestionRecyclerView;
+        final AllAppsRecyclerView entertainRecyclerView;
+        final AllAppsRecyclerView socialRecyclerView;
+        final AllAppsRecyclerView travelRecyclerView;
         if (mUsingTabs) {
-            mainRecyclerView = (AllAppsRecyclerView) mViewPager.getChildAt(0);
-            workRecyclerView = (AllAppsRecyclerView) mViewPager.getChildAt(1);
+            suggestionRecyclerView = (AllAppsRecyclerView) mViewPager.getChildAt(0);
+            mainRecyclerView = (AllAppsRecyclerView) mViewPager.getChildAt(1);
+            workRecyclerView = (AllAppsRecyclerView) mViewPager.getChildAt(2);
+            entertainRecyclerView = (AllAppsRecyclerView) mViewPager.getChildAt(3);
+            socialRecyclerView = (AllAppsRecyclerView) mViewPager.getChildAt(4);
+            travelRecyclerView = (AllAppsRecyclerView) mViewPager.getChildAt(5);
+
+            mAH.get(AdapterHolder.SUGGESTIONS).setup(suggestionRecyclerView, mPersonalMatcher);
             mAH.get(AdapterHolder.MAIN).setup(mainRecyclerView, mPersonalMatcher);
             mAH.get(AdapterHolder.WORK).setup(workRecyclerView, mWorkManager.getItemInfoMatcher());
+            mAH.get(AdapterHolder.ENTERTAINMENT).setup(entertainRecyclerView, mPersonalMatcher);
+            mAH.get(AdapterHolder.SOCIAL).setup(socialRecyclerView, mPersonalMatcher);
+            mAH.get(AdapterHolder.TRAVEL).setup(travelRecyclerView, mPersonalMatcher);
+            
             workRecyclerView.setId(R.id.apps_list_view_work);
             if (enableExpandingPauseWorkButton()
                     || FeatureFlags.ENABLE_EXPANDING_PAUSE_WORK_BUTTON.get()) {
-                mAH.get(AdapterHolder.WORK).mRecyclerView.addOnScrollListener(
+                mAH.get(WORK).mRecyclerView.addOnScrollListener(
                         mWorkManager.newScrollListener());
             }
-            mViewPager.getPageIndicator().setActiveMarker(AdapterHolder.MAIN);
+            mViewPager.getPageIndicator().setActiveMarker(SUGGESTIONS);
             findViewById(R.id.tab_personal)
                     .setOnClickListener((View view) -> {
-                        if (mViewPager.snapToPage(AdapterHolder.MAIN)) {
+                        if (mViewPager.snapToPage(MAIN)) {
                             mActivityContext.getStatsLogManager().logger()
                                     .log(LAUNCHER_ALLAPPS_TAP_ON_PERSONAL_TAB);
                         }
                     });
             findViewById(R.id.tab_work)
                     .setOnClickListener((View view) -> {
-                        if (mViewPager.snapToPage(AdapterHolder.WORK)) {
+                        if (mViewPager.snapToPage(WORK)) {
                             mActivityContext.getStatsLogManager().logger()
                                     .log(LAUNCHER_ALLAPPS_TAP_ON_WORK_TAB);
                         }
                     });
+            findViewById(R.id.tab_suggestions)
+                .setOnClickListener((View view) -> {
+                    if (mViewPager.snapToPage(AdapterHolder.SUGGESTIONS)) {
+                        mActivityContext.getStatsLogManager().logger()
+                            .log(LAUNCHER_ALLAPPS_TAP_ON_WORK_TAB);
+                    }
+                });
+            findViewById(R.id.tab_entertainment)
+                .setOnClickListener((View view) -> {
+                    if (mViewPager.snapToPage(AdapterHolder.ENTERTAINMENT)) {
+                        mActivityContext.getStatsLogManager().logger()
+                            .log(LAUNCHER_ALLAPPS_TAP_ON_WORK_TAB);
+                    }
+                });
+            findViewById(R.id.tab_social)
+                .setOnClickListener((View view) -> {
+                    if (mViewPager.snapToPage(AdapterHolder.SOCIAL)) {
+                        mActivityContext.getStatsLogManager().logger()
+                            .log(LAUNCHER_ALLAPPS_TAP_ON_WORK_TAB);
+                    }
+                });
+            findViewById(R.id.tab_travel)
+                .setOnClickListener((View view) -> {
+                    if (mViewPager.snapToPage(AdapterHolder.TRAVEL)) {
+                        mActivityContext.getStatsLogManager().logger()
+                            .log(LAUNCHER_ALLAPPS_TAP_ON_WORK_TAB);
+                    }
+                });
+            
+            
             setDeviceManagementResources();
             if (mHeader.isSetUp()) {
                 onActivePageChanged(mViewPager.getNextPage());
@@ -667,8 +752,8 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         } else {
             mainRecyclerView = findViewById(R.id.apps_list_view);
             workRecyclerView = null;
-            mAH.get(AdapterHolder.MAIN).setup(mainRecyclerView, mPersonalMatcher);
-            mAH.get(AdapterHolder.WORK).mRecyclerView = null;
+            mAH.get(MAIN).setup(mainRecyclerView, mPersonalMatcher);
+            mAH.get(WORK).mRecyclerView = null;
         }
         setUpCustomRecyclerViewPool(
                 mainRecyclerView,
@@ -678,15 +763,15 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
 
         if (isSearchBarFloating()) {
             // Keep the scroller above the search bar.
-            RelativeLayout.LayoutParams scrollerLayoutParams = (LayoutParams) mFastScroller.getLayoutParams();
+            LayoutParams scrollerLayoutParams = (LayoutParams) mFastScroller.getLayoutParams();
             scrollerLayoutParams.bottomMargin = mSearchContainer.getHeight()
                     + getResources().getDimensionPixelSize(
                             R.dimen.fastscroll_bottom_margin_floating_search);
         }
 
-        mAllAppsStore.registerIconContainer(mAH.get(AdapterHolder.MAIN).mRecyclerView);
-        mAllAppsStore.registerIconContainer(mAH.get(AdapterHolder.WORK).mRecyclerView);
-        mAllAppsStore.registerIconContainer(mAH.get(AdapterHolder.SEARCH).mRecyclerView);
+        mAllAppsStore.registerIconContainer(mAH.get(MAIN).mRecyclerView);
+        mAllAppsStore.registerIconContainer(mAH.get(WORK).mRecyclerView);
+        mAllAppsStore.registerIconContainer(mAH.get(SEARCH).mRecyclerView);
     }
 
     /**
@@ -719,7 +804,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     }
 
     private void replaceAppsRVContainer(boolean showTabs) {
-        for (int i = AdapterHolder.MAIN; i <= AdapterHolder.WORK; i++) {
+        for (int i = MAIN; i <= WORK; i++) {
             AdapterHolder adapterHolder = mAH.get(i);
             if (adapterHolder.mRecyclerView != null) {
                 adapterHolder.mRecyclerView.setLayoutManager(null);
@@ -751,7 +836,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
             });
 
             mWorkManager.reset();
-            post(() -> mAH.get(AdapterHolder.WORK).applyPadding());
+            post(() -> mAH.get(WORK).applyPadding());
 
         } else {
             mWorkManager.detachWorkModeSwitch();
@@ -778,8 +863,12 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         mHeader.setVisibility(hideHeader ? View.GONE : View.VISIBLE);
         boolean tabsHidden = !mUsingTabs;
         mHeader.setup(
-                mAH.get(AdapterHolder.MAIN).mRecyclerView,
-                mAH.get(AdapterHolder.WORK).mRecyclerView,
+                mAH.get(SUGGESTIONS).mRecyclerView,
+                mAH.get(MAIN).mRecyclerView,
+                mAH.get(WORK).mRecyclerView,
+                mAH.get(AdapterHolder.ENTERTAINMENT).mRecyclerView,
+                mAH.get(AdapterHolder.SOCIAL).mRecyclerView,
+                mAH.get(AdapterHolder.TRAVEL).mRecyclerView,
                 (SearchRecyclerView) mAH.get(SEARCH).mRecyclerView,
                 getCurrentPage(),
                 tabsHidden);
@@ -916,30 +1005,42 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     }
 
     private void layoutBelowSearchContainer(View v, boolean includeTabsMargin) {
-        if (!(v.getLayoutParams() instanceof RelativeLayout.LayoutParams)
+        if (!(v.getLayoutParams() instanceof LayoutParams)
                 || PreferenceExtensionsKt.firstBlocking(pref2.getHideAppDrawerSearchBar())) {
             return;
         }
+        
+        //apps rv
+        //head view
+        //search rv
 
-        RelativeLayout.LayoutParams layoutParams = (LayoutParams) v.getLayoutParams();
-        layoutParams.addRule(RelativeLayout.ALIGN_TOP, R.id.search_container_all_apps);
-
-        int topMargin = getContext().getResources().getDimensionPixelSize(
-                R.dimen.all_apps_header_top_margin);
-        if (includeTabsMargin) {
-            topMargin += getContext().getResources().getDimensionPixelSize(
-                    R.dimen.all_apps_header_pill_height);
+        LayoutParams layoutParams = (LayoutParams) v.getLayoutParams();
+        switch (v.getClass().getName()) {
+            case "com.android.launcher3.allapps.AllAppsPagedView":
+            case "com.android.launcher3.allapps.SearchRecyclerView":
+                layoutParams.addRule(RelativeLayout.ABOVE, R.id.search_container_all_apps);
+                layoutParams.addRule(RelativeLayout.BELOW, R.id.all_apps_header);
+                break;
+            case "com.android.launcher3.allapps.FloatingHeaderView":
+                layoutParams.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+//                int topMargin = getContext().getResources().getDimensionPixelSize(
+//                    R.dimen.all_apps_header_top_margin);
+//                if (includeTabsMargin) {
+//                    topMargin += getContext().getResources().getDimensionPixelSize(
+//                        R.dimen.all_apps_header_pill_height);
+//                }
+//                layoutParams.topMargin = topMargin;
+                break;
         }
-        layoutParams.topMargin = topMargin;
     }
 
     private void alignParentTop(View v, boolean includeTabsMargin) {
-        if (!(v.getLayoutParams() instanceof RelativeLayout.LayoutParams)
+        if (!(v.getLayoutParams() instanceof LayoutParams)
                 || PreferenceExtensionsKt.firstBlocking(pref2.getHideAppDrawerSearchBar())) {
             return;
         }
 
-        RelativeLayout.LayoutParams layoutParams = (LayoutParams) v.getLayoutParams();
+        LayoutParams layoutParams = (LayoutParams) v.getLayoutParams();
         layoutParams.addRule(RelativeLayout.ALIGN_PARENT_TOP);
         layoutParams.topMargin = includeTabsMargin
                 ? getContext().getResources().getDimensionPixelSize(
@@ -948,12 +1049,12 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     }
 
     private void removeCustomRules(View v) {
-        if (!(v.getLayoutParams() instanceof RelativeLayout.LayoutParams)
+        if (!(v.getLayoutParams() instanceof LayoutParams)
                 || PreferenceExtensionsKt.firstBlocking(pref2.getHideAppDrawerSearchBar())) {
             return;
         }
 
-        RelativeLayout.LayoutParams layoutParams = (LayoutParams) v.getLayoutParams();
+        LayoutParams layoutParams = (LayoutParams) v.getLayoutParams();
         layoutParams.removeRule(RelativeLayout.ABOVE);
         layoutParams.removeRule(RelativeLayout.ALIGN_TOP);
         layoutParams.removeRule(RelativeLayout.ALIGN_PARENT_TOP);
@@ -970,12 +1071,12 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     }
 
     private void layoutWithoutSearchContainer(View v, boolean includeTabsMargin) {
-        if (!(v.getLayoutParams() instanceof RelativeLayout.LayoutParams)
+        if (!(v.getLayoutParams() instanceof LayoutParams)
                 || PreferenceExtensionsKt.firstBlocking(pref2.getHideAppDrawerSearchBar())) {
             return;
         }
 
-        RelativeLayout.LayoutParams layoutParams = (LayoutParams) v.getLayoutParams();
+        LayoutParams layoutParams = (LayoutParams) v.getLayoutParams();
         layoutParams.addRule(RelativeLayout.ALIGN_PARENT_TOP);
         layoutParams.topMargin = getContext().getResources().getDimensionPixelSize(includeTabsMargin
                 ? R.dimen.all_apps_header_pill_height
@@ -1019,7 +1120,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         Bundle state = (Bundle) sparseArray.get(R.id.work_tab_state_id, null);
         if (state != null) {
             int currentPage = state.getInt(BUNDLE_KEY_CURRENT_PAGE, 0);
-            if (currentPage == AdapterHolder.WORK && mViewPager != null) {
+            if (currentPage == WORK && mViewPager != null) {
                 mViewPager.setCurrentPage(currentPage);
                 rebindAdapters();
             } else {
@@ -1087,8 +1188,9 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
 
     @VisibleForTesting
     public void onAppsUpdated() {
-        mHasWorkApps = Stream.of(mAllAppsStore.getApps())
-                .anyMatch(mWorkManager.getItemInfoMatcher());
+//        mHasWorkApps = Stream.of(mAllAppsStore.getApps())
+//                .anyMatch(mWorkManager.getItemInfoMatcher());
+        mHasWorkApps = true;
         mHasPrivateApps = Stream.of(mAllAppsStore.getApps())
                 .anyMatch(mPrivateProfileManager.getItemInfoMatcher());
         if (!isSearching()) {
@@ -1172,15 +1274,15 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
 
     /** The current focus change listener in the search container. */
     public OnFocusChangeListener getSearchFocusChangeListener() {
-        return mAH.get(AdapterHolder.SEARCH).mOnFocusChangeListener;
+        return mAH.get(SEARCH).mOnFocusChangeListener;
     }
 
     /** The current apps recycler view in the container. */
     private AllAppsRecyclerView getActiveAppsRecyclerView() {
         if (!mUsingTabs || isPersonalTab()) {
-            return mAH.get(AdapterHolder.MAIN).mRecyclerView;
+            return mAH.get(MAIN).mRecyclerView;
         } else {
-            return mAH.get(AdapterHolder.WORK).mRecyclerView;
+            return mAH.get(WORK).mRecyclerView;
         }
     }
 
@@ -1322,7 +1424,8 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
      * Returns true if the container has work apps.
      */
     public boolean shouldShowTabs() {
-        return mHasWorkApps;
+//        return mHasWorkApps;
+        return true;
     }
 
     // Used by tests only
@@ -1349,7 +1452,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     }
 
     private void inflateWorkCardsIfNeeded() {
-        AllAppsRecyclerView workRV = mAH.get(AdapterHolder.WORK).mRecyclerView;
+        AllAppsRecyclerView workRV = mAH.get(WORK).mRecyclerView;
         if (workRV != null) {
             for (int i = 0; i < workRV.getChildCount(); i++) {
                 View currentView = workRV.getChildAt(i);
@@ -1399,7 +1502,7 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     public int getCurrentPage() {
         return isSearching()
                 ? SEARCH
-                : mViewPager == null ? AdapterHolder.MAIN : mViewPager.getNextPage();
+                : mViewPager.getNextPage();
     }
 
     public PrivateProfileManager getPrivateProfileManager() {
@@ -1611,11 +1714,15 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         return mSearchTransitionController;
     }
 
-    /** Holds a {@link BaseAllAppsAdapter} and related fields. */
     public class AdapterHolder {
-        public static final int MAIN = 0;
-        public static final int WORK = 1;
-        public static final int SEARCH = 2;
+        /** Holds a {@link BaseAllAppsAdapter} and related fields. */
+        public static final int SUGGESTIONS = 0;
+        public static final int MAIN = 1;
+        public static final int WORK = 2;
+        public static final int ENTERTAINMENT = 3;
+        public static final int SOCIAL = 4;
+        public static final int TRAVEL = 5;
+        public static final int SEARCH = 6;
 
         private final int mType;
         public final BaseAllAppsAdapter<T> mAdapter;
@@ -1691,5 +1798,44 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         private boolean isMain() {
             return mType == MAIN;
         }
+    }
+
+    public void toggleShoppingMode() {
+        isShoppingMode = !isShoppingMode;
+        updateViewVisibility();
+    }
+
+    private void updateViewVisibility() {
+        if (isShoppingMode) {
+            mShoppingAppsGrid.setVisibility(View.VISIBLE);
+            mAppsView.setVisibility(View.GONE);
+            // 更新购物应用列表
+            updateShoppingApps();
+        } else {
+            mShoppingAppsGrid.setVisibility(View.GONE);
+            mAppsView.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void updateShoppingApps() {
+        List<AppInfo> shoppingApps = filterShoppingApps(mAllAppsStore.getApps());
+        mShoppingAppsGrid.setApps(shoppingApps);
+    }
+
+    private List<AppInfo> filterShoppingApps(AppInfo[] allApps) {
+        // 实现购物应用过滤逻辑
+        return Arrays.stream(allApps)
+            .filter(this::isShoppingApp)
+            .collect(Collectors.toList());
+    }
+
+    private boolean isShoppingApp(AppInfo app) {
+        // 判断是否为购物应用的逻辑
+        String packageName = app.componentName.getPackageName();
+        return packageName.contains("shopping") ||
+               packageName.contains("store") ||
+               packageName.contains("mall") ||
+               // 添加更多购物应用的判断条件
+               false;
     }
 }

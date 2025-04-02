@@ -89,8 +89,12 @@ public class FloatingHeaderView extends LinearLayout implements
     private final int mTabsAdditionalPaddingBottom;
 
     protected ViewGroup mTabLayout;
+    private AllAppsRecyclerView mSuggestionRV;
     private AllAppsRecyclerView mMainRV;
     private AllAppsRecyclerView mWorkRV;
+    private AllAppsRecyclerView mEntertainRV;
+    private AllAppsRecyclerView mSocialRV;
+    private AllAppsRecyclerView mTravelRV;
     private SearchRecyclerView mSearchRV;
     private AllAppsRecyclerView mCurrentRV;
     protected int mSnappedScrolledY;
@@ -226,7 +230,13 @@ public class FloatingHeaderView extends LinearLayout implements
         return super.getFocusedChild();
     }
 
-    void setup(AllAppsRecyclerView mainRV, AllAppsRecyclerView workRV, SearchRecyclerView searchRV,
+    void setup(AllAppsRecyclerView suggestionRV, 
+               AllAppsRecyclerView mainRV,
+               AllAppsRecyclerView workRV,
+               AllAppsRecyclerView entertainRV,
+               AllAppsRecyclerView socialRV,
+               AllAppsRecyclerView travelRV,
+               SearchRecyclerView searchRV,
             int activeRV, boolean tabsHidden) {
         for (FloatingHeaderRow row : mAllRows) {
             row.setup(this, mAllRows, tabsHidden);
@@ -235,8 +245,12 @@ public class FloatingHeaderView extends LinearLayout implements
         mTabsHidden = tabsHidden;
         maybeSetTabVisibility(VISIBLE);
         updateExpectedHeight();
+        mSuggestionRV = suggestionRV;
         mMainRV = mainRV;
         mWorkRV = workRV;
+        mEntertainRV = entertainRV;
+        mSocialRV = socialRV;
+        mTravelRV = travelRV;
         mSearchRV = searchRV;
         setActiveRV(activeRV);
         reset(false);
@@ -252,9 +266,22 @@ public class FloatingHeaderView extends LinearLayout implements
         if (mCurrentRV != null) {
             mCurrentRV.removeOnScrollListener(mOnScrollListener);
         }
-        mCurrentRV =
-                rvType == AdapterHolder.MAIN ? mMainRV
-                : rvType == AdapterHolder.WORK ? mWorkRV : mSearchRV;
+        if (rvType == AdapterHolder.SUGGESTIONS) {
+            mCurrentRV = mSuggestionRV;
+        } else if (rvType == AdapterHolder.MAIN) {
+            mCurrentRV = mMainRV;
+        } else if (rvType == AdapterHolder.WORK) {
+            mCurrentRV = mWorkRV;
+        } else if (rvType == AdapterHolder.ENTERTAINMENT) {
+            mCurrentRV = mEntertainRV;
+        } else if (rvType == AdapterHolder.SOCIAL) {
+            mCurrentRV = mSocialRV;
+        } else if(rvType == AdapterHolder.TRAVEL) {
+            mCurrentRV = mTravelRV;
+        } else if (rvType == AdapterHolder.SEARCH) {
+            mCurrentRV = mSearchRV;
+        }
+        
         mCurrentRV.addOnScrollListener(mOnScrollListener);
         maybeSetTabVisibility(rvType == AdapterHolder.SEARCH ? GONE : VISIBLE);
     }
